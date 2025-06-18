@@ -1,89 +1,110 @@
-# src/main.py (최신 MediaPipe Tasks API 버전)
+# src/main.py (여러 비디오 파일을 순차적으로 처리하는 버전)
 
 import cv2
 import mediapipe as mp
 import numpy as np
-from utils import calculate_ear # utils.py는 그대로 사용
+import os
+import glob # 파일 경로를 다루기 위한 라이브러리
+from utils import calculate_ear
 
-# MediaPipe Tasks API를 위한 설정
+# --- 설정 (Configuration) ---
+# 1. 경로 설정
+VIDEO_SOURCE_DIR = "../data/videos/"  # 동영상들이 있는 폴더
+OUTPUT_IMAGE_DIR = "../data/images/"  # 결과 이미지를 저장할 폴더
+
+# 2. 졸음 판단 기준값 설정
+EAR_THRESHOLD = 0.25
+EAR_CONSEC_FRAMES = 48 # 48 프레임 (약 2초) 동안 기준값 미만이면 졸음으로 판단
+
+# 3. MediaPipe 설정
 BaseOptions = mp.tasks.BaseOptions
 FaceLandmarker = mp.tasks.vision.FaceLandmarker
 FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
-
-# 모델 파일 경로 (.task 파일)
 model_path = '../models/face_landmarker_v2_with_blendshapes.task'
 
-# FaceLandmarker 인스턴스 생성
 options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=model_path),
-    running_mode=VisionRunningMode.VIDEO) # 비디오 모드로 설정
+    running_mode=VisionRunningMode.VIDEO)
 
+# --- 메인 로직 ---
+
+# 결과 저장 폴더가 없으면 생성
+os.makedirs(OUTPUT_IMAGE_DIR, exist_ok=True)
+
+# VIDEO_SOURCE_DIR 폴더 안에 있는 모든 .mp4 파일을 찾기
+video_files = glob.glob(os.path.join(VIDEO_SOURCE_DIR, "*.mp4"))
+video_files.sort() # 파일 이름 순서대로 정렬
+
+print(f"[INFO] {len(video_files)}개의 비디오 파일을 찾았습니다.")
+
+# FaceLandmarker 인스턴스 생성
 with FaceLandmarker.create_from_options(options) as landmarker:
-    # MediaPipe에서 눈 랜드마크 인덱스 (EAR 계산에 필요한 6개 포인트)
-    LEFT_EYE_INDICES = [33, 160, 158, 133, 159, 144]
-    RIGHT_EYE_INDICES = [362, 385, 387, 263, 386, 373]
+    # 찾은 모든 비디오 파일에 대해 순차적으로 처리
+    for video_path in video_files:
+        print(f"[INFO] 처리 시작: {video_path}")
 
-    # 졸음 판단 기준값 설정
-    EAR_THRESHOLD = 0.25
-    EAR_CONSEC_FRAMES = 48
-    COUNTER = 0
+        # 변수 초기화
+        COUNTER = 0
 
-    # 비디오 파일 열기
-    print("[INFO] starting video stream...")
-    vs = cv2.VideoCapture("../data/videos/test_video.mp4")
+        # 비디오 파일 열기
+        vs = cv2.VideoCapture(video_path)
 
-    frame_timestamp_ms = 0
-    while vs.isOpened():
-        ret, frame = vs.read()
-        if not ret:
-            print("End of stream, exiting...")
-            break
+        frame_number = 0
+        while vs.isOpened():
+            ret, frame = vs.read()
+            if not ret:
+                break
 
-        # 프레임 크기 가져오기
-        height, width, _ = frame.shape
+            frame_number += 1
+            height, width, _ = frame.shape
 
-        # BGR 이미지를 RGB로 변환하여 MediaPipe Image 객체로 만듦
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            frame_timestamp_ms = int(vs.get(cv2.CAP_PROP_POS_MSEC))
+            detection_result = landmarker.detect_for_video(mp_image, frame_timestamp_ms)
 
-        # 현재 프레임의 타임스탬프 계산
-        frame_timestamp_ms = int(vs.get(cv2.CAP_PROP_POS_MSEC))
+            is_drowsy = False
+            # 랜드마크가 감지된 경우
+            if detection_result.face_landmarks:
+                for face_landmarks in detection_result.face_landmarks:
+                    LEFT_EYE_INDICES = [33, 160, 158, 133, 159, 144]
+                    RIGHT_EYE_INDICES = [362, 385, 387, 263, 386, 373]
 
-        # 랜드마크 감지 실행
-        detection_result = landmarker.detect_for_video(mp_image, frame_timestamp_ms)
+                    left_eye_points = np.array([[int(face_landmarks[i].x * width), int(face_landmarks[i].y * height)] for i in LEFT_EYE_INDICES])
+                    right_eye_points = np.array([[int(face_landmarks[i].x * width), int(face_landmarks[i].y * height)] for i in RIGHT_EYE_INDICES])
 
-        # 얼굴 랜드마크가 감지된 경우
-        if detection_result.face_landmarks:
-            for face_landmarks in detection_result.face_landmarks:
-                # 눈 좌표 추출 (정규화된 좌표 -> 픽셀 좌표)
-                left_eye_points = np.array([[int(face_landmarks[i].x * width), int(face_landmarks[i].y * height)] for i in LEFT_EYE_INDICES])
-                right_eye_points = np.array([[int(face_landmarks[i].x * width), int(face_landmarks[i].y * height)] for i in RIGHT_EYE_INDICES])
+                    ear = (calculate_ear(left_eye_points) + calculate_ear(right_eye_points)) / 2.0
 
-                # EAR 계산
-                leftEAR = calculate_ear(left_eye_points)
-                rightEAR = calculate_ear(right_eye_points)
-                ear = (leftEAR + rightEAR) / 2.0
+                    if ear < EAR_THRESHOLD:
+                        COUNTER += 1
+                        if COUNTER >= EAR_CONSEC_FRAMES:
+                            is_drowsy = True
+                    else:
+                        COUNTER = 0
 
-                # 눈 윤곽선 그리기
-                cv2.drawContours(frame, [cv2.convexHull(left_eye_points)], -1, (0, 255, 0), 1)
-                cv2.drawContours(frame, [cv2.convexHull(right_eye_points)], -1, (0, 255, 0), 1)
+                    # (시각화) 화면에 EAR 값 표시
+                    cv2.putText(frame, "EAR: {:.2f}".format(ear), (width - 150, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-                # 졸음 감지 로직
-                if ear < EAR_THRESHOLD:
-                    COUNTER += 1
-                    if COUNTER >= EAR_CONSEC_FRAMES:
-                        cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                else:
-                    COUNTER = 0
-
-                # 화면에 EAR 값 표시
-                cv2.putText(frame, "EAR: {:.2f}".format(ear), (width - 150, 30),
+            # 졸음 상태일 때만 결과 이미지 저장
+            if is_drowsy:
+                # (시각화) 알림 텍스트 표시
+                cv2.putText(frame, "DROWSINESS ALERT!", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-        # 결과 프레임을 파일로 저장
-        cv2.imwrite("../data/images/output_frame_mediapipe_tasks.jpg", frame)
+                # 저장할 파일 이름 생성 (예: SGA2101519S0005_frame_00123.jpg)
+                base_filename = os.path.basename(video_path) # SGA2101519S0005.mp4
+                video_name = os.path.splitext(base_filename)[0] # SGA2101519S0005
 
-    # 작업 완료 후 정리
-    vs.release()
+                output_filename = f"{video_name}_frame_{frame_number:05d}_alert.jpg"
+                output_path = os.path.join(OUTPUT_IMAGE_DIR, output_filename)
+
+                # 이미지 파일로 저장
+                cv2.imwrite(output_path, frame)
+                print(f"  -> 졸음 감지! {output_filename} 저장됨")
+
+        # 비디오 처리 완료 후 자원 해제
+        vs.release()
+
+print("[INFO] 모든 비디오 파일 처리가 완료되었습니다.")
