@@ -6,5 +6,4 @@ __pycache__/
 *.pyc
 
 # 데이터 및 모델 파일 무시 (필요에 따라 선택)
-data/
 # models/
