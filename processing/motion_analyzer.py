@@ -74,7 +74,7 @@ class MotionAnalyzer:
                     motion_consistency = 0.0
             else:
                 # shape 오류 발생 시 경고 출력
-                print(f"[MotionAnalyzer] shape error: good_prev {good_prev.shape}, good_next {good_next.shape}")
+                # print(f"[MotionAnalyzer] shape error: good_prev {good_prev.shape}, good_next {good_next.shape}")
                 motion_consistency = 0.0
 
             # 4. 특징점 보충: 50개 미만이면 새로 찾고, 아니면 추적된 점을 그대로 사용

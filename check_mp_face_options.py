@@ -4,7 +4,6 @@ from mediapipe.tasks.python import vision
 print('mediapipe version:', mediapipe.__version__)
 print('FaceLandmarkerOptions.__init__ signature:')
 print(vision.FaceLandmarkerOptions.__init__.__doc__)
-
 print('\nFaceLandmarkerOptions dir:')
 print(dir(vision.FaceLandmarkerOptions))
 
