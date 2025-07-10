@@ -40,8 +40,28 @@ def check_ray_box_intersection(ray_origin, ray_dir, box):
     3D 광선(ray)과 3D AABB(축 정렬 박스) 교차 판정 (표준 알고리즘)
     box: (min_xyz, max_xyz) 튜플
     """
-    tmin = (box[0] - ray_origin) / (ray_dir + 1e-8)
-    tmax = (box[1] - ray_origin) / (ray_dir + 1e-8)
+    # Ensure inputs are numpy arrays
+    ray_origin = np.asarray(ray_origin)
+    ray_dir = np.asarray(ray_dir)
+    
+    # Check for zero or near-zero direction vector
+    ray_dir_magnitude = np.linalg.norm(ray_dir)
+    if ray_dir_magnitude < 1e-6:
+        return False  # Invalid ray direction
+    
+    # Normalize the direction vector to prevent numerical issues
+    ray_dir = ray_dir / ray_dir_magnitude
+    
+    # Use a more robust epsilon value
+    epsilon = 1e-6
+    
+    # Handle potential division by zero more robustly
+    safe_ray_dir = np.where(np.abs(ray_dir) < epsilon, 
+                           np.sign(ray_dir) * epsilon, 
+                           ray_dir)
+    
+    tmin = (box[0] - ray_origin) / safe_ray_dir
+    tmax = (box[1] - ray_origin) / safe_ray_dir
     t1 = np.minimum(tmin, tmax)
     t2 = np.maximum(tmin, tmax)
     t_near = np.max(t1)

@@ -96,28 +96,26 @@ class DriverMonitor:
                 self.face_detector.detect_async(mp_image, timestamp_ms)
                 self.object_detector.detect_async(mp_image, timestamp_ms)
             
-            # Get the latest results safely
+            # Get the latest results safely and process them under lock
             with self.result_lock:
                 face_result = self.latest_face_result
                 pose_result = self.latest_pose_result
                 object_result = self.latest_object_result
-            
-            # --- Prepare data for processing modules ---
-            
-            # 1. Create the results dictionary for the judgment engine
-            results_for_judgment = {
-                'face_landmarker': face_result,
-                'pose': pose_result,
-                'object': object_result,
-                'hands': None  # Placeholder, as hand detection is not implemented
-            }
+                
+                # Create the results dictionary for the judgment engine
+                results_for_judgment = {
+                    'face_landmarker': face_result,
+                    'pose': pose_result,
+                    'object': object_result,
+                    'hands': None  # Placeholder, as hand detection is not implemented
+                }
 
-            # Since calibration is removed, use a fixed threshold value from config
-            # The judgment engine will need to be adapted to use this.
-            judgment_status = self.judgment_engine.judge(
-                results_for_judgment,
-                frame.shape
-            )
+                # Since calibration is removed, use a fixed threshold value from config
+                # The judgment engine will need to be adapted to use this.
+                judgment_status = self.judgment_engine.judge(
+                    results_for_judgment,
+                    frame.shape
+                )
 
             # --- State Machine Update ---
             if judgment_status['is_drowsy'] or judgment_status['is_distracted']:
