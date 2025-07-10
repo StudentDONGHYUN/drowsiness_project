@@ -97,6 +97,8 @@ class JudgmentEngine:
         """
         face_results = results.get('face_landmarker')
         if not face_results:
+            # Face detection failed, reset counters to prevent false positives
+            self.drowsy_counter = 0
             return False, ""
 
         # 눈 감김 확인
@@ -111,6 +113,9 @@ class JudgmentEngine:
             
             if self.drowsy_counter > cfg.DROWSY_FRAME_LIMIT:
                 return True, "WARNING: Eyes Closed"
+        else:
+            # No blendshapes data available, reset counter
+            self.drowsy_counter = 0
 
         # 고개 숙임 확인
         if face_results.facial_transformation_matrixes:
